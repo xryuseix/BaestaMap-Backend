@@ -1,16 +1,14 @@
 package function
 
 import (
-	"context"
-	"flag"
-	"fmt"
-	"log"
-	"encoding/json"
-
 	"cloud.google.com/go/firestore"
+	"context"
 	firebase "firebase.google.com/go"
+	"flag"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"log"
+	"time"
 )
 
 func LocalCreateClient(ctx context.Context) *firestore.Client {
@@ -43,46 +41,58 @@ func remoteCreateClient(ctx context.Context) *firestore.Client {
 	return client
 }
 
-type Location struct {
-	Lat string
-	Lng string
-}
-type PostDocs struct {
-	PostId string 
-	SearchWord string
-	Location Location
-}
-func FireStoreInsert(ctx context.Context, client *firestore.Client, postDocs PostDocs) bool {
-	jsonStr, err := json.Marshal(postDocs)
-	if err != nil {
-		log.Fatalln(err)
-		return false
-	}
-	var mapData map[string]interface{}
-	if err := json.Unmarshal(jsonStr, &mapData); err != nil {
-        fmt.Println(err)
-		return false
-    }
-	if _, _, err := client.Collection("posts").Add(ctx, mapData); err != nil {
-		log.Fatalf("Failed adding alovelace: %v", err)
-		return false
-	}
-	return true
+type SearchLocation struct {
+	Lat float64
+	Lng float64
 }
 
-func fireStoreRead(ctx context.Context, client *firestore.Client) []*firestore.DocumentSnapshot {
-	iter := client.Collection("users").Documents(ctx)
-	var results []*firestore.DocumentSnapshot
+type Location struct {
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+	LocationId int64   `json:"locationId"`
+	Name       string  `json:"name"`
+}
+
+type PostDocs struct {
+	HashTagDocsId string    `json:"hashTagDocsId"`
+	Location      Location  `json:"location"`
+	Permalink     string    `json:"permalink"`
+	Timestamp     time.Time `json:"timestamp"`
+}
+
+func FetchNearPosts(ctx context.Context, client *firestore.Client, location SearchLocation, diff float64) ([]*firestore.DocumentSnapshot, error) {
+	iter := client.Collection("posts").Where("location.lat", ">=", location.Lat-diff).Where("location.lat", "<=", location.Lat+diff).Limit(100).Documents(ctx)
+	nearPosts := []*firestore.DocumentSnapshot{}
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
 			break
 		}
 		if err != nil {
-			log.Fatalf("Failed to iterate: %v", err)
+			return nil, err
 		}
-		fmt.Println(doc.Data()) // TODO: remove
-		results = append(results, doc)
+		lng := doc.Data()["location"].(map[string]interface{})["lng"].(float64)
+		if location.Lng-diff <= lng && lng <= location.Lng+diff {
+			nearPosts = append(nearPosts, doc)
+		}
 	}
-	return results
+	return nearPosts, nil
+}
+
+func DSnaps2Obj(dSnaps []*firestore.DocumentSnapshot) []PostDocs {
+	obj := []PostDocs{}
+	for _, dSnap := range dSnaps {
+		obj = append(obj, PostDocs{
+			HashTagDocsId: dSnap.Data()["hashTagDocsId"].(string),
+			Location: Location{
+				Lat:        dSnap.Data()["location"].(map[string]interface{})["lat"].(float64),
+				Lng:        dSnap.Data()["location"].(map[string]interface{})["lng"].(float64),
+				LocationId: int64(dSnap.Data()["location"].(map[string]interface{})["locationId"].(int64)),
+				Name:       dSnap.Data()["location"].(map[string]interface{})["name"].(string),
+			},
+			Permalink: dSnap.Data()["permalink"].(string),
+			Timestamp: dSnap.Data()["timestamp"].(time.Time),
+		})
+	}
+	return obj
 }

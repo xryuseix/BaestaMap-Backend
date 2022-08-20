@@ -3,52 +3,36 @@ package main
 import (
 	"fmt"
 	"context"
-	// "net/http"
-	"log"
+	"net/http"
 	"github.com/wanwan0622/BaestaMap-Backend"
 )
 
+
 func main() {
-	postIds := [...] string{"CghEoYyv-4e", "CghbnAEPfU8"}
-	function.GetCoordinates(postIds[0])
+	WebServer()
 }
 
-// func WebServer() {
-// 	http.HandleFunc("/", localGcloudMain)
-// 	fmt.Println("Server started on: http://127.0.0.1:8080")
-// 	http.ListenAndServe("127.0.0.1:8080", nil)
-// }
+func WebServer() {
+	http.HandleFunc("/", localGcloudMain)
+	fmt.Println("Server started on: http://127.0.0.1:8080")
+	http.ListenAndServe("127.0.0.1:8080", nil)
+}
 
-// func localGcloudMain(w http.ResponseWriter, r *http.Request) {
-// 	ctx := context.Background()
-// 	client := function.LocalCreateClient(ctx)
-// 	result := function.GcloudFirestore(ctx, client)
-// 	defer client.Close()
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.Write(result)
-// }
-
-func Crowling() {
-	location := "新橋ランチ"
-	postIDs, err := function.Crawling(location)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	fmt.Println(postIDs)
+func localGcloudMain(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	client := function.LocalCreateClient(ctx)
-	postDocs := function.PostDocs{
-		PostId: postIDs[0],
-		SearchWord: location,
-		Location: function.Location{
-			Lat: "135.00",
-			Lng: "34.3900",
-		},
+	location := function.SearchLocation{
+		Lat: 35.615304235976,
+		Lng: 139.7175761816,
 	}
-	ok := function.FireStoreInsert(ctx, client, postDocs)
-	if !ok {
-		log.Fatal("FireStoreInsert failed")
-	}
+	result, err := function.GcloudFirestore(ctx, client, location)
 	defer client.Close()
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.Write([]byte("{'success':false,error:'unexpected error!'}"))
+	} else {
+		w.Write(result)
+	}
 }
+
