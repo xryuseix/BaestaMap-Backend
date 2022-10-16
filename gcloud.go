@@ -3,9 +3,10 @@ package function
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
-	"io/ioutil"
+
 	"cloud.google.com/go/firestore"
 )
 
@@ -20,7 +21,7 @@ type APIResponse struct {
 }
 
 func GcloudFirestore(ctx context.Context, client *firestore.Client, location SearchLocation) ([]byte, error) {
-	result, err := FetchNearPosts(ctx, client, location, 0.1)
+	result, err := FetchNearPosts(ctx, client, location)
 	if err != nil {
 		log.Fatalf("Failed to get posts: %v", err)
 		return nil, err
@@ -39,7 +40,20 @@ func GcloudFirestore(ctx context.Context, client *firestore.Client, location Sea
 }
 
 func GcloudMain(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	// Set CORS headers for the preflight request
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// main request
+	// validation
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
 		w.Write([]byte("{'success':false,error:'Invalid request method.'}"))
 		return
 	}
@@ -51,11 +65,13 @@ func GcloudMain(w http.ResponseWriter, r *http.Request) {
 	}
 	location := SearchLocation{}
 	err = json.Unmarshal(body, &location)
-	if err!= nil {
+	if err != nil {
 		log.Fatalf("Failed to parse json: %v", err)
 		w.Write([]byte("{'success':false,error:'Failed to parse json.'}"))
 		return
 	}
+
+	// main program
 	ctx := context.Background()
 	client := remoteCreateClient(ctx)
 	result, err := GcloudFirestore(ctx, client, location)
